@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Cpu,
   Shield,
-
   Brain,
   ChevronRight
 } from 'lucide-react';
@@ -24,7 +23,10 @@ interface Model {
   verified: boolean;
 }
 
+
 const DEFAULT_MODELS: Model[] = [
+  { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
+  { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },
   { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
   { model: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano', provider: 'NVIDIA', size: '30B', verified: true },
   { model: 'gemma4:31b', name: 'Gemma 4', provider: 'Google', size: '31B', verified: true },
@@ -38,7 +40,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Model[]>(DEFAULT_MODELS);
-  const [selectedModel, setSelectedModel] = useState<string>('nemotron-3-super');
+  const [selectedModel, setSelectedModel] = useState<string>('qwen3.5:cloud');
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -51,19 +53,43 @@ function App() {
 
       console.log('Models from API:', data);
 
+      let modelList: Model[] = [];
+
       if (data.free && data.free.length > 0) {
-        setModels(data.free);
-        if (!selectedModel || selectedModel === 'nemotron-3-super') {
-          setSelectedModel(data.recommended || data.free[0].model);
-        }
+        // Remove duplicates from API response
+        const uniqueMap = new Map<string, Model>();
+        data.free.forEach((model: Model) => {
+          if (!uniqueMap.has(model.model)) {
+            uniqueMap.set(model.model, model);
+          }
+        });
+        modelList = Array.from(uniqueMap.values());
       } else {
-        setModels(DEFAULT_MODELS);
-        setSelectedModel('nemotron-3-super');
+        modelList = DEFAULT_MODELS;
+      }
+
+      // Sort: Cloud models first, then verified
+      const sortedModels = modelList.sort((a, b) => {
+        if (a.model.includes('cloud') && !b.model.includes('cloud')) return -1;
+        if (!a.model.includes('cloud') && b.model.includes('cloud')) return 1;
+        if (a.verified && !b.verified) return -1;
+        if (!a.verified && b.verified) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setModels(sortedModels);
+      
+      // Set Qwen as default if available
+      const hasQwen = sortedModels.some((m: Model) => m.model === 'qwen3.5:cloud');
+      if (hasQwen) {
+        setSelectedModel('qwen3.5:cloud');
+      } else {
+        setSelectedModel(sortedModels[0]?.model || 'nemotron-3-super');
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
       setModels(DEFAULT_MODELS);
-      setSelectedModel('nemotron-3-super');
+      setSelectedModel('qwen3.5:cloud');
     } finally {
       setLoadingModels(false);
     }
@@ -232,7 +258,7 @@ function App() {
               {loading ? (
                 <>
                   <Loader2 className="animate-spin" size={16} />
-                  Analyzing
+                  Analyzing...
                 </>
               ) : (
                 <>
@@ -273,7 +299,7 @@ function App() {
         {decision && (
           <div className="bg-white rounded-xl border border-[#E4E4E7] overflow-hidden animate-fadeIn">
 
-            {/* Decision strip, styled like a CI check result */}
+            {/* Decision strip */}
             <div className={`flex items-center justify-between px-5 py-4 border-b ${
               decision === 'YES'
                 ? 'bg-[#F0FDF4] border-[#BBF7D0]'
@@ -299,7 +325,7 @@ function App() {
             </div>
 
             <div className="p-5">
-              {/* Guardrail Analysis / Explanation */}
+              {/* Guardrail Analysis */}
               <div className="p-4 bg-[#FAFAFA] rounded-lg border border-[#F0F0F1]">
                 <p className="text-[13px] text-[#3F3F46] leading-relaxed">
                   <span className="font-semibold text-[#18181B]">Analysis — </span>
@@ -309,7 +335,7 @@ function App() {
                 </p>
               </div>
 
-              {/* Explanation from AI - THE USEFUL PART */}
+              {/* Explanation from AI */}
               {explanation && (
                 <div className="mt-4">
                   <details className="cursor-pointer group">
@@ -326,7 +352,7 @@ function App() {
                 </div>
               )}
 
-              {/* Full Response - Technical Details (collapsed) */}
+              {/* Full Response */}
               {fullResponse && fullResponse !== explanation && (
                 <div className="mt-3">
                   <details className="cursor-pointer group">

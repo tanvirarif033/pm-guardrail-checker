@@ -49,57 +49,24 @@ interface OllamaTagsResponse {
   models: OllamaModel[];
 }
 
-// All free models (verified working)
-const FREE_MODELS: Model[] = [
-  // NVIDIA Models - Confirmed Working
+// All models - NO DUPLICATES
+const ALL_MODELS: Model[] = [
+  // Cloud Models
+  { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
+  { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },
+  
+  // Working NVIDIA Models
   { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
   { model: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano', provider: 'NVIDIA', size: '30B', verified: true },
   { model: 'nemotron-3-ultra', name: 'Nemotron 3 Ultra', provider: 'NVIDIA', size: 'Ultra', verified: false },
   
-  // Google Gemma Models
+  // Working Google Models
   { model: 'gemma4:31b', name: 'Gemma 4', provider: 'Google', size: '31B', verified: true },
-  { model: 'gemma3:27b', name: 'Gemma 3', provider: 'Google', size: '27B', verified: false },
-  { model: 'gemma3:12b', name: 'Gemma 3 (Small)', provider: 'Google', size: '12B', verified: false },
-  { model: 'gemma3:4b', name: 'Gemma 3 (Mini)', provider: 'Google', size: '4B', verified: false },
   
-  // Meta Llama Models
-  { model: 'llama3.2:3b', name: 'Llama 3.2', provider: 'Meta', size: '3B', verified: false },
-  { model: 'llama3.2:1b', name: 'Llama 3.2 (Tiny)', provider: 'Meta', size: '1B', verified: false },
-  { model: 'llama3.1:8b', name: 'Llama 3.1', provider: 'Meta', size: '8B', verified: false },
-  
-  // Mistral Models
-  { model: 'mistral:7b', name: 'Mistral', provider: 'Mistral AI', size: '7B', verified: false },
-  { model: 'ministral-3:8b', name: 'Ministral 3', provider: 'Mistral AI', size: '8B', verified: false },
-  { model: 'ministral-3:3b', name: 'Ministral 3 (Tiny)', provider: 'Mistral AI', size: '3B', verified: false },
-  
-  // Alibaba Qwen Models
-  { model: 'qwen2.5:7b', name: 'Qwen 2.5', provider: 'Alibaba', size: '7B', verified: false },
-  { model: 'qwen2.5:14b', name: 'Qwen 2.5 (Large)', provider: 'Alibaba', size: '14B', verified: false },
-  { model: 'qwen3-coder:480b', name: 'Qwen 3 Coder', provider: 'Alibaba', size: '480B', verified: false },
-  
-  // Microsoft Phi Models
-  { model: 'phi3:3.8b', name: 'Phi-3 Mini', provider: 'Microsoft', size: '3.8B', verified: false },
-  { model: 'phi3:14b', name: 'Phi-3', provider: 'Microsoft', size: '14B', verified: false },
-  
-  // Zhipu AI Models
-  { model: 'glm-4.7', name: 'GLM 4.7', provider: 'Zhipu AI', size: '4.7', verified: false },
-  { model: 'glm4:9b-chat', name: 'GLM 4 (Chat)', provider: 'Zhipu AI', size: '9B', verified: false },
-  
-  // Open-Source GPT Models
+  // Other potentially working models
   { model: 'gpt-oss:120b', name: 'GPT-OSS', provider: 'Open Source', size: '120B', verified: false },
   { model: 'gpt-oss:20b', name: 'GPT-OSS (Small)', provider: 'Open Source', size: '20B', verified: false },
-  
-  // MiniMax Models
   { model: 'minimax-m3', name: 'MiniMax M3', provider: 'MiniMax', size: 'M3', verified: false },
-  { model: 'minimax-m2.5', name: 'MiniMax M2.5', provider: 'MiniMax', size: 'M2.5', verified: false },
-  
-  // Code-Specific Models
-  { model: 'codellama:7b', name: 'Code Llama', provider: 'Meta', size: '7B', verified: false },
-  { model: 'deepseek-coder:6.7b', name: 'DeepSeek Coder', provider: 'DeepSeek', size: '6.7B', verified: false },
-  
-  // Lightweight Models
-  { model: 'tinyllama:1.1b', name: 'TinyLlama', provider: 'Open Source', size: '1.1B', verified: false },
-  { model: 'devstral-small-2:24b', name: 'Devstral Small', provider: 'Devstral', size: '24B', verified: false },
 ];
 
 const modelName = getCleanModelName();
@@ -107,9 +74,9 @@ const modelName = getCleanModelName();
 console.log('🔧 Configuration:');
 console.log(`  - PORT: ${port}`);
 console.log(`  - OLLAMA_BASE_URL: ${process.env.OLLAMA_BASE_URL}`);
-console.log(`  - OLLAMA_MODEL: "${process.env.modelName}"`);
+console.log(`  - OLLAMA_MODEL: "${modelName}"`);
 console.log(`  - OLLAMA_API_KEY: ${process.env.OLLAMA_API_KEY ? '✓ Set' : '✗ Not set'}`);
-console.log(`  - Total Models: ${FREE_MODELS.length}`);
+console.log(`  - Total Models: ${ALL_MODELS.length}`);
 
 // Middleware
 app.use(cors({
@@ -129,7 +96,7 @@ app.get('/health', (req, res) => {
     config: {
       model: modelName,
       baseUrl: process.env.OLLAMA_BASE_URL,
-      totalModels: FREE_MODELS.length
+      totalModels: ALL_MODELS.length
     }
   });
 });
@@ -153,40 +120,69 @@ app.get('/api/models', async (req, res) => {
     }
 
     // Filter models that are available
-    const availableFreeModels = FREE_MODELS.filter(freeModel => {
+    let availableModels = ALL_MODELS.filter(model => {
+      // Check if available in Ollama OR it's a cloud model (always show)
       const isAvailable = availableModelNames.some(available =>
-        available === freeModel.model ||
-        available.includes(freeModel.model) ||
-        freeModel.model.includes(available)
+        available === model.model ||
+        available.includes(model.model) ||
+        model.model.includes(available)
       );
-
-      if (availableModelNames.length === 0) {
+      
+      // ALWAYS include cloud models even if not in Ollama response
+      if (model.model === 'qwen3.5:cloud' || model.model === 'glm-5.2:cloud') {
         return true;
       }
-
+      
       return isAvailable;
     });
 
-    if (availableFreeModels.length > 0) {
-      console.log(`✅ Found ${availableFreeModels.length} available free models`);
-      return res.json({
-        free: availableFreeModels,
-        recommended: 'nemotron-3-super',
-        allAvailable: availableModelNames
-      });
+    // If no models found, return default ones
+    if (availableModels.length === 0) {
+      console.log('⚠️ No models found, returning defaults');
+      availableModels = [
+        { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
+        { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },
+        { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
+        { model: 'gemma4:31b', name: 'Gemma 4', provider: 'Google', size: '31B', verified: true },
+      ];
     }
 
+    // Sort: Cloud models first, then verified ones
+    const sortedModels = availableModels.sort((a, b) => {
+      // Cloud models first
+      if (a.model.includes('cloud') && !b.model.includes('cloud')) return -1;
+      if (!a.model.includes('cloud') && b.model.includes('cloud')) return 1;
+      // Then verified ones
+      if (a.verified && !b.verified) return -1;
+      if (!a.verified && b.verified) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // Remove duplicates (just in case)
+    const uniqueModels = Array.from(
+      new Map(sortedModels.map(m => [m.model, m])).values()
+    );
+
+    console.log(`✅ Returning ${uniqueModels.length} unique models`);
+
     res.json({
-      free: FREE_MODELS,
-      recommended: 'nemotron-3-super',
+      free: uniqueModels,
+      recommended: 'qwen3.5:cloud',
       allAvailable: availableModelNames
     });
 
   } catch (error) {
     console.error('❌ Error fetching models:', error);
+    // Return default models on error
+    const defaultModels = [
+      { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
+      { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },
+      { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
+      { model: 'gemma4:31b', name: 'Gemma 4', provider: 'Google', size: '31B', verified: true },
+    ];
     res.json({
-      free: FREE_MODELS,
-      recommended: 'nemotron-3-super'
+      free: defaultModels,
+      recommended: 'qwen3.5:cloud'
     });
   }
 });
@@ -211,5 +207,5 @@ app.listen(port, () => {
   console.log(`\n🚀 PM Guardrail Checker running on http://localhost:${port}`);
   console.log(`📝 Health check: http://localhost:${port}/health`);
   console.log(`🤖 Using model: "${modelName}"`);
-  console.log(`📋 ${FREE_MODELS.length} free models configured\n`);
+  console.log(`📋 ${ALL_MODELS.length} total models configured\n`);
 });

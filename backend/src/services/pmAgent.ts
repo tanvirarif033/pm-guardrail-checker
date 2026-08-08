@@ -46,7 +46,7 @@ export async function checkGuardrail(
     const baseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.com';
     const apiKey = process.env.OLLAMA_API_KEY;
 
-    let modelName = selectedModel || process.env.OLLAMA_MODEL || 'nemotron-3-super';
+    let modelName = selectedModel || process.env.OLLAMA_MODEL || 'qwen3.5:cloud';
 
     modelName = modelName.trim();
     if (modelName.includes('=')) {
@@ -58,19 +58,13 @@ export async function checkGuardrail(
     console.log(`📡 Using model: "${modelName}"`);
     console.log(`🔗 Base URL: ${baseUrl}`);
 
-    // Build the config object
-    const config: any = {
+    // Optimize: Set timeout and lower temperature for faster responses
+    const model = new ChatOllama({
       baseUrl: baseUrl,
       model: modelName,
-      temperature: 0.3,
-    };
-
-    // Only add apiKey if it exists and is not empty
-    if (apiKey && apiKey.trim() !== '') {
-      config.apiKey = apiKey;
-    }
-
-    const model = new ChatOllama(config);
+      temperature: 0.1, // Lower temperature = faster, more deterministic
+      // Add timeout if supported by your version
+    });
 
     const systemPrompt = pmPrompt() + '\n\n' + TEST_INSTRUCTION;
 
@@ -80,8 +74,15 @@ export async function checkGuardrail(
     ];
 
     console.log(`📤 Sending request for: "${userPrompt.substring(0, 50)}..."`);
+    
+    // Add a timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
+    });
 
-    const response = await model.invoke(messages);
+    const responsePromise = model.invoke(messages);
+    const response = await Promise.race([responsePromise, timeoutPromise]) as any;
+    
     const content = response.content as string;
 
     console.log(`📥 Received response: "${content.substring(0, 200)}..."`);
@@ -136,6 +137,14 @@ export async function checkGuardrail(
       return {
         decision: 'NO',
         error: `This model requires a subscription. Please select a free model.`,
+        modelUsed: selectedModel || 'unknown'
+      };
+    }
+
+    if (errorMessage.includes('timeout')) {
+      return {
+        decision: 'NO',
+        error: `Request timed out. The model is taking too long to respond. Try a faster model like 'nemotron-3-nano:30b'.`,
         modelUsed: selectedModel || 'unknown'
       };
     }
