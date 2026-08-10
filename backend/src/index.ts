@@ -2,6 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import guardrailRoutes from './routes/guardrail.js';
+import { 
+  getRuntimeSystemPrompt, 
+  updateRuntimeSystemPrompt, 
+  resetRuntimeSystemPrompt 
+} from './services/pmAgent.js';
 
 dotenv.config();
 
@@ -101,6 +106,59 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ============================================================
+// SYSTEM PROMPT MANAGEMENT APIS - 3 Options: View, Edit, Reset
+// ============================================================
+
+// 1. GET - View current runtime system prompt
+app.get('/api/system-prompt', (req, res) => {
+  const { prompt, isModified } = getRuntimeSystemPrompt();
+  res.json({
+    systemPrompt: prompt,
+    isModified: isModified,
+    isDefault: !isModified
+  });
+});
+
+// 2. PUT - Edit/Update runtime system prompt
+app.put('/api/system-prompt', (req, res) => {
+  const { systemPrompt } = req.body;
+  
+  if (!systemPrompt || typeof systemPrompt !== 'string') {
+    return res.status(400).json({
+      error: 'systemPrompt is required and must be a string'
+    });
+  }
+
+  const result = updateRuntimeSystemPrompt(systemPrompt);
+  
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+  
+  res.json({
+    success: true,
+    message: result.message,
+    isModified: true
+  });
+});
+
+// 3. POST - Reset to default system prompt
+app.post('/api/system-prompt/reset', (req, res) => {
+  const { prompt, isModified } = resetRuntimeSystemPrompt();
+  res.json({
+    success: true,
+    systemPrompt: prompt,
+    isModified: isModified,
+    isDefault: true,
+    message: 'System prompt reset to default'
+  });
+});
+
+// ============================================================
+// END: System Prompt Management APIs
+// ============================================================
+
 // Get available models
 app.get('/api/models', async (req, res) => {
   try {
@@ -121,14 +179,12 @@ app.get('/api/models', async (req, res) => {
 
     // Filter models that are available
     let availableModels = ALL_MODELS.filter(model => {
-      // Check if available in Ollama OR it's a cloud model (always show)
       const isAvailable = availableModelNames.some(available =>
         available === model.model ||
         available.includes(model.model) ||
         model.model.includes(available)
       );
       
-      // ALWAYS include cloud models even if not in Ollama response
       if (model.model === 'qwen3.5:cloud' || model.model === 'glm-5.2:cloud') {
         return true;
       }
@@ -136,7 +192,6 @@ app.get('/api/models', async (req, res) => {
       return isAvailable;
     });
 
-    // If no models found, return default ones
     if (availableModels.length === 0) {
       console.log('⚠️ No models found, returning defaults');
       availableModels = [
@@ -147,18 +202,14 @@ app.get('/api/models', async (req, res) => {
       ];
     }
 
-    // Sort: Cloud models first, then verified ones
     const sortedModels = availableModels.sort((a, b) => {
-      // Cloud models first
       if (a.model.includes('cloud') && !b.model.includes('cloud')) return -1;
       if (!a.model.includes('cloud') && b.model.includes('cloud')) return 1;
-      // Then verified ones
       if (a.verified && !b.verified) return -1;
       if (!a.verified && b.verified) return 1;
       return a.name.localeCompare(b.name);
     });
 
-    // Remove duplicates (just in case)
     const uniqueModels = Array.from(
       new Map(sortedModels.map(m => [m.model, m])).values()
     );
@@ -173,7 +224,6 @@ app.get('/api/models', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching models:', error);
-    // Return default models on error
     const defaultModels = [
       { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
       { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },

@@ -1,6 +1,15 @@
 import { ChatOllama } from '@langchain/ollama';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { pmPrompt } from '../prompts/pmPrompt.js';
+import { DEFAULT_SYSTEM_PROMPT } from '../prompts/pmPrompt.js';
+
+// ============================================================
+// RUNTIME SYSTEM PROMPT STATE
+// Starts with DEFAULT_SYSTEM_PROMPT
+// Can be modified via API at runtime
+// Resets to default on server restart
+// ============================================================
+let runtimeSystemPrompt: string = DEFAULT_SYSTEM_PROMPT;
+let isPromptModified: boolean = false;
 
 const TEST_INSTRUCTION = `
 ########################################
@@ -25,6 +34,38 @@ Output exactly in this format with DECISION: first, followed by explanation.
 ########################################
 `;
 
+// ============================================================
+// RUNTIME PROMPT MANAGEMENT FUNCTIONS
+// ============================================================
+
+// Get current runtime system prompt
+export function getRuntimeSystemPrompt(): { prompt: string; isModified: boolean } {
+  return { prompt: runtimeSystemPrompt, isModified: isPromptModified };
+}
+
+// Update runtime system prompt
+export function updateRuntimeSystemPrompt(newPrompt: string): { success: boolean; message: string } {
+  if (!newPrompt || newPrompt.trim().length === 0) {
+    return { success: false, message: 'System prompt cannot be empty' };
+  }
+  runtimeSystemPrompt = newPrompt;
+  isPromptModified = true;
+  console.log('✅ Runtime system prompt updated');
+  return { success: true, message: 'System prompt updated successfully' };
+}
+
+// Reset runtime system prompt to default
+export function resetRuntimeSystemPrompt(): { prompt: string; isModified: boolean } {
+  runtimeSystemPrompt = DEFAULT_SYSTEM_PROMPT;
+  isPromptModified = false;
+  console.log('🔄 Runtime system prompt reset to default');
+  return { prompt: runtimeSystemPrompt, isModified: isPromptModified };
+}
+
+// ============================================================
+// GUARDRAIL CHECK FUNCTION
+// ============================================================
+
 export async function checkGuardrail(
   userPrompt: string,
   selectedModel?: string
@@ -34,6 +75,7 @@ export async function checkGuardrail(
   explanation?: string;
   error?: string;
   modelUsed?: string;
+  injectedPrompt?: string;
 }> {
   try {
     if (!userPrompt || userPrompt.trim().length === 0) {
@@ -57,16 +99,18 @@ export async function checkGuardrail(
 
     console.log(`📡 Using model: "${modelName}"`);
     console.log(`🔗 Base URL: ${baseUrl}`);
+    console.log(`📝 Using runtime system prompt (Modified: ${isPromptModified})`);
 
-    // Optimize: Set timeout and lower temperature for faster responses
+    // ============================================================
+    // KEY: Use the RUNTIME system prompt (not the default directly)
+    // ============================================================
+    const systemPrompt = runtimeSystemPrompt + '\n\n' + TEST_INSTRUCTION;
+
     const model = new ChatOllama({
       baseUrl: baseUrl,
       model: modelName,
-      temperature: 0.1, // Lower temperature = faster, more deterministic
-      // Add timeout if supported by your version
+      temperature: 0.1,
     });
-
-    const systemPrompt = pmPrompt() + '\n\n' + TEST_INSTRUCTION;
 
     const messages = [
       new SystemMessage(systemPrompt),
@@ -75,7 +119,6 @@ export async function checkGuardrail(
 
     console.log(`📤 Sending request for: "${userPrompt.substring(0, 50)}..."`);
     
-    // Add a timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
     });
@@ -121,7 +164,8 @@ export async function checkGuardrail(
       decision,
       fullResponse: content,
       explanation: explanation || content,
-      modelUsed: modelName
+      modelUsed: modelName,
+      injectedPrompt: systemPrompt // Return the full injected prompt
     };
   } catch (error: any) {
     console.error('❌ Error checking guardrail:', error);

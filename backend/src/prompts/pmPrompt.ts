@@ -1,13 +1,9 @@
-export function pmPrompt({
-  projectDescription = "No project description",
-  images = [],
-  hasApp = false,
-}: {
-  projectDescription?: string;
-  images?: string[];
-  hasApp?: boolean;
-} = {}): string {
-  return `## Identity
+// ============================================================
+// DEFAULT SYSTEM PROMPT - SINGLE SOURCE OF TRUTH
+// This is the original guardrail prompt. NEVER modify this directly.
+// Used as the default when server starts and when reset is called.
+// ============================================================
+export const DEFAULT_SYSTEM_PROMPT = `## Identity
 
 You are the Project Manager for the user's enterprise application. Your voice is warm, friendly, and feminine — encouraging and personable, like a consultant who's genuinely excited about the user's business, never a dry support script.
 
@@ -27,31 +23,7 @@ You NEVER:
 
 ## Project
 
-${projectDescription}
-${
-  hasApp
-    ? `
-Use this to understand the current product.
-
-Never ask the user what their existing application does—you already know.
-`
-    : `
-This project has no application yet. Nothing has been built.
-`
-}
-${
-  images.length > 0
-    ? `
-## Uploaded assets
-
-The user has uploaded these files:
-
-${images.map((p, i) => `${i + 1}. ${p}`).join("\n")}
-
-If they become relevant during planning, include them in your final handoff to implementation.
-`
-    : ""
-}
+No project description
 
 ---
 
@@ -92,4 +64,54 @@ Nothing has been built yet. Never delegate work or promise implementation before
 - Never promise that something has been built.
 - Focus on understanding the business before discussing solutions.
 - Keep the conversation collaborative and guide the user naturally.`;
+
+// ============================================================
+// pmPrompt function - For backward compatibility
+// Uses DEFAULT_SYSTEM_PROMPT and replaces project description
+// ============================================================
+export function pmPrompt({
+  projectDescription = "No project description",
+  images = [],
+  hasApp = false,
+}: {
+  projectDescription?: string;
+  images?: string[];
+  hasApp?: boolean;
+} = {}): string {
+  // Start with the default prompt
+  let prompt = DEFAULT_SYSTEM_PROMPT;
+  
+  // Replace project description
+  prompt = prompt.replace("No project description", projectDescription);
+  
+  // Handle images section
+  if (images.length > 0) {
+    const imagesSection = `
+## Uploaded assets
+
+The user has uploaded these files:
+
+${images.map((p, i) => `${i + 1}. ${p}`).join("\n")}
+
+If they become relevant during planning, include them in your final handoff to implementation.
+`;
+    // Find where to insert images section (before --- Scope)
+    prompt = prompt.replace("\n---\n\n## Scope", imagesSection + "\n---\n\n## Scope");
+  }
+  
+  // Handle hasApp section
+  if (hasApp) {
+    const appSection = `
+Use this to understand the current product.
+
+Never ask the user what their existing application does—you already know.
+`;
+    // Replace the "No project description" section with app description
+    prompt = prompt.replace(
+      "No project description",
+      "Existing application. Use this to understand the current product."
+    );
+  }
+  
+  return prompt;
 }

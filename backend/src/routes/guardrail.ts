@@ -26,7 +26,8 @@ router.post('/guardrail', async (req, res) => {
         error: result.error,
         decision: result.decision,
         modelUsed: result.modelUsed,
-        explanation: result.explanation
+        explanation: result.explanation,
+        injectedPrompt: result.injectedPrompt
       });
     }
 
@@ -35,7 +36,8 @@ router.post('/guardrail', async (req, res) => {
       decision: result.decision,
       explanation: result.explanation || result.fullResponse,
       fullResponse: result.fullResponse,
-      modelUsed: result.modelUsed
+      modelUsed: result.modelUsed,
+      injectedPrompt: result.injectedPrompt
     });
   } catch (error) {
     res.status(500).json({
@@ -49,8 +51,11 @@ router.get('/test', (req, res) => {
     status: 'OK',
     message: 'Guardrail API is working',
     endpoints: {
-      post: '/api/guardrail',
-      get: '/api/test'
+      guardrail: '/api/guardrail (POST)',
+      test: '/api/test (GET)',
+      systemPrompt: '/api/system-prompt (GET)',
+      updateSystemPrompt: '/api/system-prompt (PUT)',
+      resetSystemPrompt: '/api/system-prompt/reset (POST)'
     }
   });
 });

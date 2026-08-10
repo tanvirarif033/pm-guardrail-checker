@@ -10,7 +10,13 @@ import {
   Cpu,
   Shield,
   Brain,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  Edit3,
+  Save,
+  RotateCcw,
+  X,
+  FileText
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -22,7 +28,6 @@ interface Model {
   size: string;
   verified: boolean;
 }
-
 
 const DEFAULT_MODELS: Model[] = [
   { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
@@ -44,6 +49,33 @@ function App() {
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
+  
+  // ============================================================
+  // 3-Option System Prompt State
+  // ============================================================
+  const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState('');
+  const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null);
+  const [isPromptModified, setIsPromptModified] = useState(false);
+  const [promptSaveStatus, setPromptSaveStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+
+  // Fetch current system prompt on mount
+  useEffect(() => {
+    fetchCurrentSystemPrompt();
+  }, []);
+
+  const fetchCurrentSystemPrompt = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/system-prompt`);
+      const data = await response.json();
+      setCurrentSystemPrompt(data.systemPrompt);
+      setIsPromptModified(data.isModified);
+    } catch (error) {
+      console.error('Failed to fetch system prompt:', error);
+    }
+  };
 
   const fetchModels = async () => {
     setLoadingModels(true);
@@ -56,7 +88,6 @@ function App() {
       let modelList: Model[] = [];
 
       if (data.free && data.free.length > 0) {
-        // Remove duplicates from API response
         const uniqueMap = new Map<string, Model>();
         data.free.forEach((model: Model) => {
           if (!uniqueMap.has(model.model)) {
@@ -68,7 +99,6 @@ function App() {
         modelList = DEFAULT_MODELS;
       }
 
-      // Sort: Cloud models first, then verified
       const sortedModels = modelList.sort((a, b) => {
         if (a.model.includes('cloud') && !b.model.includes('cloud')) return -1;
         if (!a.model.includes('cloud') && b.model.includes('cloud')) return 1;
@@ -79,7 +109,6 @@ function App() {
 
       setModels(sortedModels);
       
-      // Set Qwen as default if available
       const hasQwen = sortedModels.some((m: Model) => m.model === 'qwen3.5:cloud');
       if (hasQwen) {
         setSelectedModel('qwen3.5:cloud');
@@ -110,6 +139,7 @@ function App() {
     setExplanation(null);
     setModelUsed(null);
     setResponseTime(null);
+    setInjectedPrompt(null);
 
     const startTime = performance.now();
 
@@ -138,11 +168,115 @@ function App() {
       setFullResponse(data.fullResponse || '');
       setExplanation(data.explanation || data.fullResponse || '');
       setModelUsed(data.modelUsed || selectedModel);
+      setInjectedPrompt(data.injectedPrompt || null);
+      
+      // Refresh system prompt status
+      await fetchCurrentSystemPrompt();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect to the server. Make sure the backend is running.');
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // 3-Option Prompt Modal Handlers
+  // 1. View - Open modal in view mode
+  // 2. Edit - Switch to edit mode
+  // 3. Reset - Reset to default
+  // ============================================================
+  
+  // Option 1: View - Open modal in view mode
+  const openPromptModal = () => {
+    setEditedPrompt(injectedPrompt || currentSystemPrompt || '');
+    setIsEditingPrompt(false); // View mode by default
+    setIsPromptModalOpen(true);
+    setPromptSaveStatus({ type: null, message: '' });
+  };
+
+  const closePromptModal = () => {
+    setIsPromptModalOpen(false);
+    setIsEditingPrompt(false);
+    setEditedPrompt('');
+    setPromptSaveStatus({ type: null, message: '' });
+  };
+
+  // Option 2: Edit - Switch to edit mode
+  const handleEditPrompt = () => {
+    setIsEditingPrompt(true);
+    setEditedPrompt(injectedPrompt || currentSystemPrompt || '');
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingPrompt(false);
+    setEditedPrompt(injectedPrompt || currentSystemPrompt || '');
+    setPromptSaveStatus({ type: null, message: '' });
+  };
+
+  const handleApplyChanges = async () => {
+    if (!editedPrompt || editedPrompt.trim().length === 0) {
+      setPromptSaveStatus({ type: 'error', message: 'System prompt cannot be empty' });
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/system-prompt`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ systemPrompt: editedPrompt })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update system prompt');
+      }
+
+      setPromptSaveStatus({ type: 'success', message: 'System prompt updated successfully!' });
+      setIsEditingPrompt(false);
+      setIsPromptModified(true);
+      setCurrentSystemPrompt(editedPrompt);
+      
+      // Update injected prompt preview with new content + TEST_INSTRUCTION
+      const updatedInjected = editedPrompt + '\n\n' + '########################################\n\nTEST MODE...';
+      setInjectedPrompt(updatedInjected);
+    } catch (err) {
+      setPromptSaveStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update system prompt' });
+    }
+  };
+
+  // Option 3: Reset to Default
+  const handleResetToDefault = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/system-prompt/reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset system prompt');
+      }
+
+      setCurrentSystemPrompt(data.systemPrompt);
+      setIsPromptModified(false);
+      setIsEditingPrompt(false);
+      setEditedPrompt(data.systemPrompt);
+      setPromptSaveStatus({ type: 'success', message: 'System prompt reset to default' });
+      
+      // Clear injected prompt preview
+      setInjectedPrompt(null);
+      
+      // Re-fetch current system prompt
+      await fetchCurrentSystemPrompt();
+    } catch (err) {
+      setPromptSaveStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to reset system prompt' });
     }
   };
 
@@ -176,12 +310,16 @@ function App() {
             Run a prompt against the PM Agent's system prompt and see whether it
             passes scope guardrails.
           </p>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center px-2 py-0.5 rounded border border-[#E4E4E7] bg-white font-mono text-[11px] text-[#3F3F46]">
               v2.0
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded border border-[#E4E4E7] bg-white font-mono text-[11px] text-[#3F3F46]">
               {models.length} models
+            </span>
+            {/* Status indicator: Default / Modified */}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded border font-mono text-[11px] ${isPromptModified ? 'border-yellow-400 bg-yellow-50 text-yellow-700' : 'border-[#E4E4E7] bg-white text-[#3F3F46]'}`}>
+              {isPromptModified ? '⚡ Modified' : 'Default Prompt'}
             </span>
           </div>
         </div>
@@ -352,6 +490,21 @@ function App() {
                 </div>
               )}
 
+              {/* ============================================================
+                  Option 1: View Injected Prompt
+                  ============================================================ */}
+              {injectedPrompt && (
+                <div className="mt-4">
+                  <button
+                    onClick={openPromptModal}
+                    className="text-[13px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5"
+                  >
+                    <Eye size={14} />
+                    View Injected Prompt
+                  </button>
+                </div>
+              )}
+
               {/* Full Response */}
               {fullResponse && fullResponse !== explanation && (
                 <div className="mt-3">
@@ -399,6 +552,118 @@ function App() {
           </p>
         </div>
       </div>
+
+      {/* ============================================================
+          Modal: 3-Option System Prompt Editor
+          Options: View | Edit | Reset to Default
+          ============================================================ */}
+      {isPromptModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E4E4E7]">
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-[#18181B]" />
+                <h2 className="text-[16px] font-semibold text-[#18181B]">
+                  {isEditingPrompt ? '✏️ Edit System Prompt' : '📄 System Prompt'}
+                </h2>
+              </div>
+              <button
+                onClick={closePromptModal}
+                className="p-1 hover:bg-[#F4F4F5] rounded-md transition"
+              >
+                <X size={18} className="text-[#71717A]" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              {/* Status indicator */}
+              <div className="mb-4 flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded border font-mono text-[11px] ${isPromptModified ? 'border-yellow-400 bg-yellow-50 text-yellow-700' : 'border-[#E4E4E7] bg-white text-[#3F3F46]'}`}>
+                  {isPromptModified ? '⚡ Modified' : '📌 Default'}
+                </span>
+                <span className="text-[11px] text-[#A1A1AA] font-mono">
+                  {isEditingPrompt ? '(Edit Mode)' : '(Read Only)'}
+                </span>
+                {promptSaveStatus.type && (
+                  <span className={`text-[12px] ${promptSaveStatus.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                    {promptSaveStatus.message}
+                  </span>
+                )}
+              </div>
+
+              {/* Prompt Content */}
+              {isEditingPrompt ? (
+                <textarea
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  className="w-full h-80 px-4 py-3 border border-[#E4E4E7] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#18181B]/10 focus:border-[#A1A1AA] font-mono text-[13px] leading-relaxed resize-none"
+                  placeholder="Enter system prompt..."
+                />
+              ) : (
+                <div className="bg-[#FAFAFA] rounded-lg p-4 border border-[#F0F0F1] max-h-80 overflow-y-auto">
+                  <pre className="text-[13px] text-[#3F3F46] whitespace-pre-wrap font-mono leading-relaxed">
+                    {editedPrompt || injectedPrompt || 'No prompt available'}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer - 3 Options: View, Edit, Reset */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-[#E4E4E7] flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {isEditingPrompt ? (
+                  // Edit Mode Actions
+                  <>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-4 py-2 text-[13px] text-[#3F3F46] hover:bg-[#F4F4F5] rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleApplyChanges}
+                      className="px-4 py-2 bg-[#18181B] hover:bg-[#27272A] text-white text-[13px] font-medium rounded-lg transition flex items-center gap-1.5"
+                    >
+                      <Save size={14} />
+                      Save & Apply
+                    </button>
+                  </>
+                ) : (
+                  // View Mode Actions - 3 Options
+                  <>
+                    {/* Option 2: Edit */}
+                    <button
+                      onClick={handleEditPrompt}
+                      className="px-4 py-2 bg-[#18181B] hover:bg-[#27272A] text-white text-[13px] font-medium rounded-lg transition flex items-center gap-1.5"
+                    >
+                      <Edit3 size={14} />
+                      Edit Prompt
+                    </button>
+                    {/* Option 3: Reset to Default */}
+                    <button
+                      onClick={handleResetToDefault}
+                      className="px-4 py-2 text-[13px] text-[#DC2626] hover:bg-red-50 rounded-lg transition flex items-center gap-1.5 border border-red-200 hover:border-red-300"
+                    >
+                      <RotateCcw size={14} />
+                      Reset to Default
+                    </button>
+                  </>
+                )}
+              </div>
+              {/* Option 1: View - Close (always available) */}
+              <button
+                onClick={closePromptModal}
+                className="px-4 py-2 text-[13px] text-[#3F3F46] hover:bg-[#F4F4F5] rounded-lg transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ============================================================ */}
 
       <style>{`
         @keyframes fadeIn {
