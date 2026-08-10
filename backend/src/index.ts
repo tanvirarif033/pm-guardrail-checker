@@ -85,7 +85,10 @@ console.log(`  - Total Models: ${ALL_MODELS.length}`);
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'https://pm-agent-checker.duckdns.org'
+  ],
   credentials: true
 }));
 app.use(express.json());
