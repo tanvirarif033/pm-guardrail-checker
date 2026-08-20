@@ -29,13 +29,24 @@ interface Model {
   verified: boolean;
 }
 
+// Fallback shown only before the first successful fetch, or if
+// GET /api/models fails entirely. The real model list always comes
+// dynamically from the backend (see fetchModels below) - this mirrors
+// the backend's curated 9-model allowlist (backend/src/index.ts,
+// CURATED_MODELS) so the dropdown is correct even in that edge case.
 const DEFAULT_MODELS: Model[] = [
-  { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
   { model: 'glm-5.2:cloud', name: 'GLM 5.2 Cloud', provider: 'Zhipu AI', size: 'Cloud', verified: true },
-  { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
-  { model: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano', provider: 'NVIDIA', size: '30B', verified: true },
+  { model: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', provider: 'Alibaba', size: 'Cloud', verified: true },
   { model: 'gemma4:31b', name: 'Gemma 4', provider: 'Google', size: '31B', verified: true },
+  { model: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano', provider: 'NVIDIA', size: '30B', verified: true },
+  { model: 'nemotron-3-super', name: 'Nemotron 3 Super', provider: 'NVIDIA', size: 'Super', verified: true },
+  { model: 'gpt-oss:120b', name: 'GPT-OSS', provider: 'Open Source', size: '120B', verified: true },
+  { model: 'gpt-oss:20b', name: 'GPT-OSS (Small)', provider: 'Open Source', size: '20B', verified: true },
+  { model: 'minimax-m3', name: 'MiniMax M3', provider: 'MiniMax', size: 'M3', verified: true },
+  { model: 'nemotron-3-ultra', name: 'Nemotron 3 Ultra', provider: 'NVIDIA', size: 'Ultra', verified: true },
 ];
+
+const RECOMMENDED_MODEL = 'qwen3.5:cloud';
 
 function App() {
   const [prompt, setPrompt] = useState('');
@@ -45,7 +56,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Model[]>(DEFAULT_MODELS);
-  const [selectedModel, setSelectedModel] = useState<string>('qwen3.5:cloud');
+  const [selectedModel, setSelectedModel] = useState<string>(RECOMMENDED_MODEL);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -99,26 +110,18 @@ function App() {
         modelList = DEFAULT_MODELS;
       }
 
-      const sortedModels = modelList.sort((a, b) => {
-        if (a.model.includes('cloud') && !b.model.includes('cloud')) return -1;
-        if (!a.model.includes('cloud') && b.model.includes('cloud')) return 1;
-        if (a.verified && !b.verified) return -1;
-        if (!a.verified && b.verified) return 1;
-        return a.name.localeCompare(b.name);
-      });
+      const sortedModels = modelList.sort((a, b) => a.name.localeCompare(b.name));
 
       setModels(sortedModels);
-      
-      const hasQwen = sortedModels.some((m: Model) => m.model === 'qwen3.5:cloud');
-      if (hasQwen) {
-        setSelectedModel('qwen3.5:cloud');
-      } else {
-        setSelectedModel(sortedModels[0]?.model || 'nemotron-3-super');
-      }
+
+      const recommended = data.recommended && sortedModels.some((m: Model) => m.model === data.recommended)
+        ? data.recommended
+        : sortedModels[0]?.model || RECOMMENDED_MODEL;
+      setSelectedModel(recommended);
     } catch (error) {
       console.error('Failed to fetch models:', error);
       setModels(DEFAULT_MODELS);
-      setSelectedModel('qwen3.5:cloud');
+      setSelectedModel(RECOMMENDED_MODEL);
     } finally {
       setLoadingModels(false);
     }
